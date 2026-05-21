@@ -1,6 +1,6 @@
 ---
 description: 启用全局自动 git 提交（一次性设置）
-allowed-tools: Bash(mkdir:*), Bash(cp:*), Bash(chmod:*), Bash(cat:*), Bash(echo:*)
+allowed-tools: Bash(mkdir:*), Bash(cp:*), Bash(chmod:*), Bash(cat:*), Bash(echo:*), Bash(find:*), Bash(grep:*), Bash(python:*)
 ---
 
 将 Stop hook 配置和 auto-commit.sh 部署到 ~/.claude/ 全局目录，一次性设置，幂等。
@@ -8,7 +8,7 @@ allowed-tools: Bash(mkdir:*), Bash(cp:*), Bash(chmod:*), Bash(cat:*), Bash(echo:
 ## Step 1: Locate and copy the hook script
 
 ```bash
-PLUGIN_SCRIPT=$(find ~/.claude/plugins/cache -path "*/auto-git-commit/*/hooks/auto-commit.sh" 2>/dev/null | head -1)
+PLUGIN_SCRIPT=$(find ~/.claude/plugins/cache -path "*auto-git-commit*/hooks/auto-commit.sh" | sort -r | head -1)
 if [ -z "$PLUGIN_SCRIPT" ]; then
     echo "错误: 找不到 auto-commit.sh，请确认插件已安装。"
     exit 1
@@ -16,6 +16,9 @@ fi
 mkdir -p ~/.claude/hooks
 cp "$PLUGIN_SCRIPT" ~/.claude/hooks/auto-commit.sh
 chmod +x ~/.claude/hooks/auto-commit.sh
+if ! command -v claude &>/dev/null; then
+    echo "警告: claude CLI 未安装，commit message 生成将降级为时间戳格式。"
+fi
 echo "脚本已部署到 ~/.claude/hooks/auto-commit.sh"
 ```
 
@@ -32,17 +35,21 @@ elif grep -q "auto-commit.sh" "$HOOK_FILE" 2>/dev/null; then
 else
     python -c "
 import json
-with open('$HOOK_FILE', 'r') as f:
-    data = json.load(f)
-if 'hooks' not in data:
-    data['hooks'] = {}
-if 'Stop' not in data['hooks']:
-    data['hooks']['Stop'] = []
-already = any('auto-commit.sh' in h.get('command', '') for h in data['hooks']['Stop'])
-if not already:
-    data['hooks']['Stop'].append({'command': 'bash ~/.claude/hooks/auto-commit.sh'})
-with open('$HOOK_FILE', 'w') as f:
-    json.dump(data, f, indent=2)
+try:
+    with open('\$HOOK_FILE', 'r') as f:
+        data = json.load(f)
+    if 'hooks' not in data:
+        data['hooks'] = {}
+    if 'Stop' not in data['hooks']:
+        data['hooks']['Stop'] = []
+    already = any('auto-commit.sh' in h.get('command', '') for h in data['hooks']['Stop'])
+    if not already:
+        data['hooks']['Stop'].append({'command': 'bash ~/.claude/hooks/auto-commit.sh'})
+    with open('\$HOOK_FILE', 'w') as f:
+        json.dump(data, f, indent=2)
+except json.JSONDecodeError:
+    print('错误: ~/.claude/settings.json 格式异常，请手动检查。')
+    import sys; sys.exit(1)
 "
     echo "Stop hook 已注册到 settings.json"
 fi
