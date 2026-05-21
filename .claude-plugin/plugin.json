@@ -1,0 +1,8 @@
+{
+  "name": "auto-git-commit",
+  "description": "每次 Claude Code 会话结束时自动检测文件变更，AI 归纳 commit message 并 commit + push 到 GitHub",
+  "author": {
+    "name": "NumberTheEleven",
+    "email": "numtheeleven@gmail.com"
+  }
+}
