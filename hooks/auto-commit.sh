@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
+# ── Color helpers (only emit when stdout is a terminal) ──
+if [ -t 1 ]; then
+    YELLOW='\033[1;33m'
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    NC='\033[0m'
+else
+    YELLOW=''; RED=''; GREEN=''; NC=''
+fi
+
+# ── Log file ──
+LOG_DIR="$HOME/.claude/logs"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/auto-git-commit.log"
+log() {
+    local level="$1"; shift
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$level] $*" >> "$LOG_FILE"
+}
 
 # ── Find project root (where .git is) ──
 PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
@@ -13,25 +27,31 @@ if [ -n "$PROJECT_ROOT" ]; then
 else
     CONFIG_FILE=".claude/auto-commit.json"
 fi
+log INFO "Stop hook triggered, config=$CONFIG_FILE"
 
 # ═══════════════════════════════════════════════
 # Gate 1: Project-level opt-in
 # ═══════════════════════════════════════════════
 if [ ! -f "$CONFIG_FILE" ]; then
-    # Project not opted in — silent exit
+    log INFO "Gate 1: no config file, silent exit"
     exit 0
 fi
 
 # Check enabled flag
 ENABLED=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('enabled', True))" 2>/dev/null || echo "true")
 if [ "$ENABLED" != "True" ] && [ "$ENABLED" != "true" ]; then
+    log INFO "Gate 1: config disabled, exit"
     exit 0
 fi
+
+# Load language preference (default: zh)
+LANG_PREF=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('language', 'zh'))" 2>/dev/null || echo "zh")
 
 # ═══════════════════════════════════════════════
 # Gate 2: Must be a git repo
 # ═══════════════════════════════════════════════
 if ! git rev-parse --git-dir &>/dev/null; then
+    log INFO "Gate 2: not a git repo, exit"
     echo -e "${YELLOW}[auto-git-commit] 当前目录不是 git 仓库。${NC}"
     echo "  运行 /auto-git-commit:init 初始化并接入自动提交。"
     exit 0
@@ -41,6 +61,7 @@ fi
 # Gate 3: Must have changes
 # ═══════════════════════════════════════════════
 if [ -z "$(git status --porcelain)" ]; then
+    log INFO "Gate 3: no changes, silent exit"
     exit 0
 fi
 
@@ -137,6 +158,7 @@ scan_secrets() {
 # ═══════════════════════════════════════════════
 SECURITY_ISSUES=$(scan_secrets)
 if [ $? -ne 0 ]; then
+    log WARN "security scan found issues, blocking commit"
     echo -e "${RED}[auto-git-commit] 发现疑似敏感信息，提交已阻止。${NC}"
     echo "$SECURITY_ISSUES"
     echo ""
@@ -144,6 +166,7 @@ if [ $? -ne 0 ]; then
     echo "  如果确实危险，请立即处理（替换为环境变量 / 加入 .gitignore）。"
     exit 0
 fi
+log INFO "security scan passed"
 
 # ═══════════════════════════════════════════════
 # Commit message generation
@@ -172,14 +195,25 @@ $(git diff 2>/dev/null)
 $untracked_content"
 
     if command -v claude &>/dev/null; then
-        msg=$(timeout 30 claude -p \
+        if [ "$LANG_PREF" = "en" ]; then
+            msg=$(timeout 30 claude -p \
+"Based on the following git diff, generate a single-line conventional commit message in English (e.g. 'feat: add user login', 'fix: resolve cache expiration', 'refactor: restructure router', 'chore: update deps', 'docs: add API guide'). Return ONLY the commit message, nothing else. Diff:
+
+$full_diff" 2>/dev/null) || true
+        else
+            msg=$(timeout 30 claude -p \
 "根据以下 git diff，用中文生成一行中文提交信息，使用中文类型前缀（如 '新增: 用户登录功能'、'修复: 缓存过期问题'、'重构: 路由模块'、'杂项: 更新依赖版本'、'文档: 补充API说明'）。只返回提交信息，不要其他内容。Diff:
 
 $full_diff" 2>/dev/null) || true
+        fi
     fi
 
     if [ -z "${msg//[[:space:]]/}" ]; then
-        msg="杂项: 自动提交 $(date '+%Y-%m-%d %H:%M')"
+        if [ "$LANG_PREF" = "en" ]; then
+            msg="chore: auto commit $(date '+%Y-%m-%d %H:%M')"
+        else
+            msg="杂项: 自动提交 $(date '+%Y-%m-%d %H:%M')"
+        fi
     fi
 
     echo "$msg"
@@ -192,21 +226,32 @@ $full_diff" 2>/dev/null) || true
 msg=$(generate_message)
 
 git add -A
-git commit -m "$msg"
+COMMIT_OUTPUT=$(git commit -m "$msg" 2>&1) || true
+if echo "$COMMIT_OUTPUT" | grep -q "nothing to commit"; then
+    log INFO "nothing to commit (race), exiting"
+    exit 0
+fi
+log INFO "committed: $msg"
+
+# Load push timeout from config (default 60 seconds)
+PUSH_TIMEOUT=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('pushTimeout', 60))" 2>/dev/null || echo "60")
+log INFO "push timeout: ${PUSH_TIMEOUT}s"
 
 # ═══════════════════════════════════════════════
 # Push with error differentiation and retry
 # ═══════════════════════════════════════════════
 
-PUSH_OUTPUT=$(timeout 60 git push 2>&1) && PUSH_OK=true || PUSH_OK=false
+PUSH_OUTPUT=$(timeout "$PUSH_TIMEOUT" git push 2>&1) && PUSH_OK=true || PUSH_OK=false
 
 if [ "$PUSH_OK" = true ]; then
+    log INFO "push succeeded: $msg"
     echo -e "${GREEN}[auto-git-commit] 已提交并推送: $msg${NC}"
     exit 0
 fi
 
 # ── No remote ──
 if echo "$PUSH_OUTPUT" | grep -qiE "No such remote|remote not found|does not appear to be a git repository|fatal: 'origin'"; then
+    log WARN "no remote configured"
     echo -e "${YELLOW}[auto-git-commit] 已本地提交，但未配置远端仓库。${NC}"
     echo "  运行 /auto-git-commit:init 配置远端。"
     exit 0
@@ -215,7 +260,7 @@ fi
 # ── No upstream tracking ──
 if echo "$PUSH_OUTPUT" | grep -qiE "no upstream branch|has no upstream"; then
     BRANCH=$(git branch --show-current)
-    PUSH_OUTPUT2=$(git push -u origin "$BRANCH" 2>&1) && PUSH_OK2=true || PUSH_OK2=false
+    PUSH_OUTPUT2=$(timeout "$PUSH_TIMEOUT" git push -u origin "$BRANCH" 2>&1) && PUSH_OK2=true || PUSH_OK2=false
     if [ "$PUSH_OK2" = true ]; then
         echo -e "${GREEN}[auto-git-commit] 已提交并推送: $msg${NC}"
         exit 0
@@ -225,6 +270,7 @@ fi
 
 # ── Authentication failure ──
 if echo "$PUSH_OUTPUT" | grep -qiE "403|401|Authentication failed|access denied|permission denied|not authorized|fatal: Authentication"; then
+    log WARN "push auth failure"
     echo -e "${RED}[auto-git-commit] 推送失败：认证错误。${NC}"
     echo "  运行 'gh auth login' 重新登录。commit 已保存在本地。"
     exit 0
@@ -232,26 +278,31 @@ fi
 
 # ── Non-fast-forward (try rebase) ──
 if echo "$PUSH_OUTPUT" | grep -qiE "non-fast-forward|\[rejected\]|fetch first"; then
-    REBASE_OUTPUT=$(git pull --rebase 2>&1) || true
+    BRANCH=$(git branch --show-current 2>/dev/null || echo "main")
+    REBASE_OUTPUT=$(git pull --rebase origin "$BRANCH" 2>&1) || true
     if echo "$REBASE_OUTPUT" | grep -qiE "CONFLICT|conflict|error:|fatal:"; then
         git rebase --abort 2>/dev/null || true
+        log WARN "rebase conflict detected, aborted"
         echo -e "${RED}[auto-git-commit] 推送失败：rebase 过程中出现冲突。${NC}"
         echo "  冲突已回滚，commit 已保存在本地。请手动处理："
-        echo "    git pull --rebase"
+        echo "    git pull --rebase origin $BRANCH"
         echo "    git push"
         exit 0
     fi
-    PUSH_OUTPUT3=$(git push 2>&1) && PUSH_OK3=true || PUSH_OK3=false
+    PUSH_OUTPUT3=$(timeout "$PUSH_TIMEOUT" git push 2>&1) && PUSH_OK3=true || PUSH_OK3=false
     if [ "$PUSH_OK3" = true ]; then
+        log INFO "push succeeded after rebase"
         echo -e "${GREEN}[auto-git-commit] 已提交并推送（rebase 后成功）: $msg${NC}"
         exit 0
     fi
+    log ERROR "push failed after rebase"
     echo -e "${RED}[auto-git-commit] 推送失败：rebase 后仍无法推送。${NC}"
     echo "  请手动处理。commit 已保存在本地。"
     exit 0
 fi
 
 # ── Unknown error ──
+log ERROR "push failed: $(echo "$PUSH_OUTPUT" | head -1)"
 echo -e "${RED}[auto-git-commit] 推送失败：${NC}"
 echo "$PUSH_OUTPUT" | head -5
 echo ""

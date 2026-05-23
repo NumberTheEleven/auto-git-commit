@@ -157,6 +157,7 @@ import json, os, datetime
 config = {
     'enabled': True,
     'createdAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'language': 'zh',
     'remote': {
         'type': 'github',
         'url': os.environ.get('REMOTE_URL', '')

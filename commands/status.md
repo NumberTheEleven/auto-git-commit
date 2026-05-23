@@ -34,11 +34,13 @@ echo ""
 
 ```bash
 # Project config
-if [ -f ".claude/auto-commit.json" ]; then
-    ENABLED=$(python -c "import json; print(json.load(open('.claude/auto-commit.json')).get('enabled', True))" 2>/dev/null || echo "unknown")
-    REMOTE=$(python -c "import json; print(json.load(open('.claude/auto-commit.json')).get('remote', {}).get('url', 'N/A'))" 2>/dev/null || echo "N/A")
-    EXCEPTIONS_COUNT=$(python -c "import json; print(len(json.load(open('.claude/auto-commit.json')).get('security', {}).get('exceptions', [])))" 2>/dev/null || echo "0")
-    CREATED=$(python -c "import json; print(json.load(open('.claude/auto-commit.json')).get('createdAt', 'N/A'))" 2>/dev/null || echo "N/A")
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+CONFIG="$PROJECT_ROOT/.claude/auto-commit.json"
+if [ -f "$CONFIG" ]; then
+    ENABLED=$(python -c "import json; d=json.load(open('$CONFIG')); print(d.get('enabled', True))" 2>/dev/null || echo "unknown")
+    REMOTE=$(python -c "import json; d=json.load(open('$CONFIG')); print(d.get('remote', {}).get('url', 'N/A'))" 2>/dev/null || echo "N/A")
+    EXCEPTIONS_COUNT=$(python -c "import json; print(len(json.load(open('$CONFIG')).get('security', {}).get('exceptions', [])))" 2>/dev/null || echo "0")
+    CREATED=$(python -c "import json; d=json.load(open('$CONFIG')); print(d.get('createdAt', 'N/A'))" 2>/dev/null || echo "N/A")
 
     echo "项目: ✓ 已接入"
     echo "      接入时间: $CREATED"
@@ -65,6 +67,27 @@ if git rev-parse --git-dir &>/dev/null; then
     echo "      分支: $BRANCH"
     echo "      最后提交: $LAST_COMMIT"
     echo "      待提交变更: $CHANGES 个文件"
+
+    # Dry-run: show what would be committed
+    if [ "$CHANGES" -gt 0 ]; then
+        echo ""
+        echo "  [dry-run] 以下文件将在会话结束时被提交："
+        # Staged files
+        STAGED=$(git diff --cached --name-status 2>/dev/null)
+        if [ -n "$STAGED" ]; then
+            echo "$STAGED" | while IFS= read -r line; do echo "    [暂存] $line"; done
+        fi
+        # Modified (unstaged) files
+        MODIFIED=$(git diff --name-status 2>/dev/null)
+        if [ -n "$MODIFIED" ]; then
+            echo "$MODIFIED" | while IFS= read -r line; do echo "    [修改] $line"; done
+        fi
+        # Untracked files
+        UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null | head -50)
+        if [ -n "$UNTRACKED" ]; then
+            echo "$UNTRACKED" | while IFS= read -r file; do echo "    [新增] $file"; done
+        fi
+    fi
 else
     echo "Git:  ✗ 非 git 仓库"
 fi

@@ -16,6 +16,7 @@ if [ ! -f ".claude/auto-commit.json" ]; then
     exit 0
 fi
 
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 echo "当前项目已接入 auto-git-commit。"
 echo ""
 echo "禁用后，Stop hook 将跳过此项目。"
@@ -31,20 +32,21 @@ Ask the user: "确认禁用当前项目的自动 git 提交？[Y/n]"
 If confirmed:
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 python -c "
 import json
-with open('.claude/auto-commit.json', 'r') as f:
+with open('$PROJECT_ROOT/.claude/auto-commit.json', 'r') as f:
     data = json.load(f)
 data['enabled'] = False
-with open('.claude/auto-commit.json', 'w') as f:
+with open('$PROJECT_ROOT/.claude/auto-commit.json', 'w') as f:
     json.dump(data, f, indent=2)
 "
-echo "✓ 已禁用。如需重新启用，运行 /auto-git-commit:init"
+echo "✓ 已禁用。如需重新启用，运行 /auto-git-commit:enable 或手动将 enabled 设为 true"
 ```
 
 If the user says "completely remove":
 
 ```bash
-rm .claude/auto-commit.json
+rm "$PROJECT_ROOT/.claude/auto-commit.json"
 echo "✓ .claude/auto-commit.json 已删除。"
 ```

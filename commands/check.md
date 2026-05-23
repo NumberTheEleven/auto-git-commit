@@ -37,11 +37,13 @@ echo ""
 ## Step 2: Load existing exceptions
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
 EXCEPTIONS=""
-if [ -f ".claude/auto-commit.json" ]; then
+if [ -f "$PROJECT_ROOT/.claude/auto-commit.json" ]; then
     EXCEPTIONS=$(python -c "
 import json
-with open('.claude/auto-commit.json') as f:
+PROJECT_ROOT = '$PROJECT_ROOT'
+with open(PROJECT_ROOT + '/.claude/auto-commit.json') as f:
     data = json.load(f)
 for e in data.get('security', {}).get('exceptions', []):
     print(e.get('pattern', ''))
@@ -92,17 +94,18 @@ Ask the user:
 **If choice = 2 (false positive):**
 ```bash
 python -c "
-import json
-with open('.claude/auto-commit.json', 'r') as f:
+import json, datetime
+PROJECT_ROOT = '$(git rev-parse --show-toplevel 2>/dev/null || echo ".")'
+with open(PROJECT_ROOT + '/.claude/auto-commit.json', 'r') as f:
     data = json.load(f)
 data['security']['exceptions'].append({
     'file': '<filename>',
     'line': <line_number>,
     'pattern': '<matched_pattern>',
     'reason': '<user-provided reason>',
-    'confirmedAt': '$(date -u +%Y-%m-%dT%H:%M:%SZ)'
+    'confirmedAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 })
-with open('.claude/auto-commit.json', 'w') as f:
+with open(PROJECT_ROOT + '/.claude/auto-commit.json', 'w') as f:
     json.dump(data, f, indent=2)
 "
 echo "✓ 已加入白名单，以后不再提醒"

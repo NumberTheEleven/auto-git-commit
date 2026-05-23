@@ -5,5 +5,13 @@
   "author": {
     "name": "NumberTheEleven",
     "email": "numtheeleven@gmail.com"
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "command": "bash ~/.claude/hooks/auto-commit.sh",
+        "description": "自动检测变更、安全扫描、提交并推送到 GitHub"
+      }
+    ]
   }
 }
