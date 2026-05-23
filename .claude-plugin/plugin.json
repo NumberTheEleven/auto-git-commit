@@ -1,7 +1,7 @@
 {
   "name": "auto-git-commit",
-  "description": "每次 Claude Code 会话结束时自动检测文件变更，AI 归纳 commit message 并 commit + push 到 GitHub",
-  "version": "1.0.0",
+  "description": "Claude Code 会话结束时自动提交推送。支持项目级接入、安全扫描、智能错误恢复。",
+  "version": "2.0.0",
   "author": {
     "name": "NumberTheEleven",
     "email": "numtheeleven@gmail.com"
