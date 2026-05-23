@@ -139,3 +139,107 @@ if [ $? -ne 0 ]; then
     echo "  如果确实危险，请立即处理（替换为环境变量 / 加入 .gitignore）。"
     exit 0
 fi
+
+# ═══════════════════════════════════════════════
+# Commit message generation
+# ═══════════════════════════════════════════════
+
+generate_message() {
+    local diff_content="$1"
+    local msg
+
+    # Collect untracked file content for context (up to 50 files)
+    local untracked_content=""
+    local count=0
+    while IFS= read -r -d '' file; do
+        count=$((count + 1))
+        if [ "$count" -gt 50 ]; then
+            untracked_content="$untracked_content... (truncated, $count untracked files total)\n"
+            break
+        fi
+        if grep -Iq . "$file" 2>/dev/null; then
+            untracked_content="$untracked_content=== new file: $file ===\n$(cat -- "$file" 2>/dev/null)\n"
+        fi
+    done < <(git ls-files --others --exclude-standard -z 2>/dev/null)
+
+    local full_diff
+    full_diff="$(git diff --cached 2>/dev/null)
+$(git diff 2>/dev/null)
+$untracked_content"
+
+    msg=$(claude -p \
+"Based on the following git diff, generate a single-line conventional commit message in English (e.g. 'feat:', 'fix:', 'refactor:', 'chore:', 'docs:'). Return ONLY the commit message, nothing else. Diff:
+
+$full_diff" 2>/dev/null) || true
+
+    if [ -z "${msg//[[:space:]]/}" ]; then
+        msg="auto: update $(date '+%Y-%m-%d %H:%M')"
+    fi
+
+    echo "$msg"
+}
+
+# ═══════════════════════════════════════════════
+# Execute commit
+# ═══════════════════════════════════════════════
+
+msg=$(generate_message)
+
+git add -A
+git commit -m "$msg"
+
+# ═══════════════════════════════════════════════
+# Push with error differentiation and retry
+# ═══════════════════════════════════════════════
+
+PUSH_OUTPUT=$(git push 2>&1) && PUSH_OK=true || PUSH_OK=false
+
+if [ "$PUSH_OK" = true ]; then
+    echo -e "${GREEN}[auto-git-commit] 已提交并推送: $msg${NC}"
+    exit 0
+fi
+
+# ── No remote ──
+if echo "$PUSH_OUTPUT" | grep -qiE "No such remote|remote not found|does not appear to be a git repository|fatal: 'origin'"; then
+    echo -e "${YELLOW}[auto-git-commit] 已本地提交，但未配置远端仓库。${NC}"
+    echo "  运行 /auto-git-commit:init 配置远端。"
+    exit 0
+fi
+
+# ── No upstream tracking ──
+if echo "$PUSH_OUTPUT" | grep -qiE "no upstream branch|has no upstream"; then
+    BRANCH=$(git branch --show-current)
+    PUSH_OUTPUT2=$(git push -u origin "$BRANCH" 2>&1) && PUSH_OK2=true || PUSH_OK2=false
+    if [ "$PUSH_OK2" = true ]; then
+        echo -e "${GREEN}[auto-git-commit] 已提交并推送: $msg${NC}"
+        exit 0
+    fi
+    PUSH_OUTPUT="$PUSH_OUTPUT2"
+fi
+
+# ── Authentication failure ──
+if echo "$PUSH_OUTPUT" | grep -qiE "403|401|Authentication failed|access denied|permission denied|not authorized|fatal: Authentication"; then
+    echo -e "${RED}[auto-git-commit] 推送失败：认证错误。${NC}"
+    echo "  运行 'gh auth login' 重新登录。commit 已保存在本地。"
+    exit 0
+fi
+
+# ── Non-fast-forward (try rebase) ──
+if echo "$PUSH_OUTPUT" | grep -qiE "non-fast-forward|\[rejected\]|fetch first"; then
+    git pull --rebase 2>/dev/null || true
+    PUSH_OUTPUT3=$(git push 2>&1) && PUSH_OK3=true || PUSH_OK3=false
+    if [ "$PUSH_OK3" = true ]; then
+        echo -e "${GREEN}[auto-git-commit] 已提交并推送（rebase 后成功）: $msg${NC}"
+        exit 0
+    fi
+    echo -e "${RED}[auto-git-commit] 推送失败：远端有冲突，rebase 后仍无法推送。${NC}"
+    echo "  请手动处理冲突后重新推送。commit 已保存在本地。"
+    exit 0
+fi
+
+# ── Unknown error ──
+echo -e "${RED}[auto-git-commit] 推送失败：${NC}"
+echo "$PUSH_OUTPUT" | head -5
+echo ""
+echo "  commit 已保存在本地。"
+exit 0
