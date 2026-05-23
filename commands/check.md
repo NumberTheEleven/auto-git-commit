@@ -39,7 +39,7 @@ echo ""
 ```bash
 EXCEPTIONS=""
 if [ -f ".claude/auto-commit.json" ]; then
-    EXCEPTIONS=$(python3 -c "
+    EXCEPTIONS=$(python -c "
 import json
 with open('.claude/auto-commit.json') as f:
     data = json.load(f)
@@ -91,7 +91,7 @@ Ask the user:
 
 **If choice = 2 (false positive):**
 ```bash
-python3 -c "
+python -c "
 import json
 with open('.claude/auto-commit.json', 'r') as f:
     data = json.load(f)

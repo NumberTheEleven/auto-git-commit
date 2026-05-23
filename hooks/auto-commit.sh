@@ -23,7 +23,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 # Check enabled flag
-ENABLED=$(python3 -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('enabled', True))" 2>/dev/null || echo "true")
+ENABLED=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('enabled', True))" 2>/dev/null || echo "true")
 if [ "$ENABLED" != "True" ] && [ "$ENABLED" != "true" ]; then
     exit 0
 fi
@@ -60,7 +60,7 @@ fi
 load_exceptions() {
     local patterns=""
     if [ -f "$CONFIG_FILE" ]; then
-        patterns=$(python3 -c "
+        patterns=$(python -c "
 import json
 with open('$CONFIG_FILE') as f:
     data = json.load(f)

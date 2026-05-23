@@ -31,7 +31,7 @@ Ask the user: "确认禁用当前项目的自动 git 提交？[Y/n]"
 If confirmed:
 
 ```bash
-python3 -c "
+python -c "
 import json
 with open('.claude/auto-commit.json', 'r') as f:
     data = json.load(f)

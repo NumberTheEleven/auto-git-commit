@@ -150,7 +150,7 @@ fi
 
 mkdir -p .claude
 
-python3 -c "
+python -c "
 import json, datetime
 config = {
     'enabled': True,

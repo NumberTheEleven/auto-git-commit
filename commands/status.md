@@ -35,10 +35,10 @@ echo ""
 ```bash
 # Project config
 if [ -f ".claude/auto-commit.json" ]; then
-    ENABLED=$(python3 -c "import json; print(json.load(open('.claude/auto-commit.json')).get('enabled', True))" 2>/dev/null || echo "unknown")
-    REMOTE=$(python3 -c "import json; print(json.load(open('.claude/auto-commit.json')).get('remote', {}).get('url', 'N/A'))" 2>/dev/null || echo "N/A")
-    EXCEPTIONS_COUNT=$(python3 -c "import json; print(len(json.load(open('.claude/auto-commit.json')).get('security', {}).get('exceptions', [])))" 2>/dev/null || echo "0")
-    CREATED=$(python3 -c "import json; print(json.load(open('.claude/auto-commit.json')).get('createdAt', 'N/A'))" 2>/dev/null || echo "N/A")
+    ENABLED=$(python -c "import json; print(json.load(open('.claude/auto-commit.json')).get('enabled', True))" 2>/dev/null || echo "unknown")
+    REMOTE=$(python -c "import json; print(json.load(open('.claude/auto-commit.json')).get('remote', {}).get('url', 'N/A'))" 2>/dev/null || echo "N/A")
+    EXCEPTIONS_COUNT=$(python -c "import json; print(len(json.load(open('.claude/auto-commit.json')).get('security', {}).get('exceptions', [])))" 2>/dev/null || echo "0")
+    CREATED=$(python -c "import json; print(json.load(open('.claude/auto-commit.json')).get('createdAt', 'N/A'))" 2>/dev/null || echo "N/A")
 
     echo "项目: ✓ 已接入"
     echo "      接入时间: $CREATED"
