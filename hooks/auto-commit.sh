@@ -76,51 +76,47 @@ for e in exceptions:
 scan_secrets() {
     local exceptions
     exceptions=$(load_exceptions)
-    
-    # High-severity patterns (block commit)
-    local high_patterns=(
-        'sk-[a-z0-9]{32,}'
-        '-----BEGIN .*PRIVATE KEY-----'
-        '(password|passwd|secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']'
-        'ghp_[a-zA-Z0-9]{36}'
-        'xox[baprs]-[a-zA-Z0-9-]+'
-    )
-    
+
+    # High-severity patterns (block commit) — combined for single grep pass
+    local combined_pattern='(sk-[a-z0-9]{32,}|-----BEGIN .*PRIVATE KEY-----|(password|passwd|secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']|ghp_[a-zA-Z0-9]{36}|xox[baprs]-[a-zA-Z0-9-]+)'
+
     local found_any=false
-    
+
     # Get list of changed files (including untracked)
     while IFS= read -r file; do
         if [ -z "$file" ]; then continue; fi
         # Skip binary files
         if ! grep -Iq . "$file" 2>/dev/null; then continue; fi
-        
-        local line_num=0
-        while IFS= read -r line; do
-            line_num=$((line_num + 1))
-            for pattern in "${high_patterns[@]}"; do
-                if echo "$line" | grep -qE "$pattern" 2>/dev/null; then
-                    # Check if this match is in exceptions
-                    local is_exception=false
-                    if [ -n "$exceptions" ]; then
-                        while IFS= read -r exc; do
-                            if [ -n "$exc" ] && echo "$line" | grep -qF "$exc" 2>/dev/null; then
-                                is_exception=true
-                                break
-                            fi
-                        done <<< "$exceptions"
+
+        # Use grep -n directly on file — avoids echo|grep per-line hang on Windows
+        local matches
+        matches=$(grep -nE "$combined_pattern" "$file" 2>/dev/null) || true
+        if [ -z "$matches" ]; then continue; fi
+
+        while IFS= read -r match_line; do
+            if [ -z "$match_line" ]; then continue; fi
+            local line_num="${match_line%%:*}"
+            local content="${match_line#*:}"
+            local snippet="${content:0:80}"
+
+            # Check exception whitelist
+            local is_exception=false
+            if [ -n "$exceptions" ]; then
+                while IFS= read -r exc; do
+                    if [ -n "$exc" ] && echo "$content" | grep -qF "$exc" 2>/dev/null; then
+                        is_exception=true
+                        break
                     fi
-                    
-                    if [ "$is_exception" = false ]; then
-                        local snippet="${line:0:80}"
-                        echo "  $file:$line_num: $snippet"
-                        found_any=true
-                    fi
-                    break
-                fi
-            done
-        done < "$file"
+                done <<< "$exceptions"
+            fi
+
+            if [ "$is_exception" = false ]; then
+                echo "  $file:$line_num: $snippet"
+                found_any=true
+            fi
+        done <<< "$matches"
     done < <(git diff --cached --name-only 2>/dev/null; git diff --name-only 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null | head -100)
-    
+
     if [ "$found_any" = true ]; then
         return 1
     fi
