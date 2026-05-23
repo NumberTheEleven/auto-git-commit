@@ -145,7 +145,6 @@ fi
 # ═══════════════════════════════════════════════
 
 generate_message() {
-    local diff_content="$1"
     local msg
 
     # Collect untracked file content for context (up to 50 files)
