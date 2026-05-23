@@ -164,13 +164,13 @@ $untracked_content"
 
     if command -v claude &>/dev/null; then
         msg=$(timeout 30 claude -p \
-"Based on the following git diff, generate a single-line conventional commit message in English (e.g. 'feat:', 'fix:', 'refactor:', 'chore:', 'docs:'). Return ONLY the commit message, nothing else. Diff:
+"根据以下 git diff，用中文生成一行 conventional commit 格式的提交信息（如 'feat: 新增用户登录功能'、'fix: 修复缓存过期问题'、'refactor: 重构路由模块'、'chore: 更新依赖版本'、'docs: 补充API文档说明'）。只返回提交信息，不要其他内容。Diff:
 
 $full_diff" 2>/dev/null) || true
     fi
 
     if [ -z "${msg//[[:space:]]/}" ]; then
-        msg="auto: update $(date '+%Y-%m-%d %H:%M')"
+        msg="chore: 自动提交 $(date '+%Y-%m-%d %H:%M')"
     fi
 
     echo "$msg"
