@@ -109,12 +109,12 @@ for f in package.json README.md Makefile pyproject.toml go.mod Cargo.toml docker
 done
 
 MSG=$(claude -p \
-"根据以下项目信息，用中文生成一行 conventional commit 格式的初始化提交信息（如 'init: 初始化 React + TypeScript 博客项目'）。只返回提交信息，不要其他内容。
+"根据以下项目信息，用中文生成一行初始化提交信息（如 '新增: 初始化 React + TypeScript 博客项目'）。只返回提交信息，不要其他内容。
 
 $PROJECT_INFO" 2>/dev/null) || MSG=""
 
 if [ -z "${MSG//[[:space:]]/}" ]; then
-    MSG="init: 项目初始化 $(date '+%Y-%m-%d')"
+    MSG="杂项: 项目初始化 $(date '+%Y-%m-%d')"
 fi
 
 git commit -m "$MSG"
