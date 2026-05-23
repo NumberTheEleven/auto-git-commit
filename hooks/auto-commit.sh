@@ -57,19 +57,22 @@ fi
 # ═══════════════════════════════════════════════
 
 # Load exceptions from config
+# Returns "file::pattern" per line (empty file field = global exception)
 load_exceptions() {
-    local patterns=""
+    local records=""
     if [ -f "$CONFIG_FILE" ]; then
-        patterns=$(python -c "
+        records=$(python -c "
 import json
 with open('$CONFIG_FILE') as f:
     data = json.load(f)
 exceptions = data.get('security', {}).get('exceptions', [])
 for e in exceptions:
-    print(e.get('pattern', ''))
+    f = e.get('file', '')
+    p = e.get('pattern', '')
+    print(f + '::' + p)
 " 2>/dev/null || echo "")
     fi
-    echo "$patterns"
+    echo "$records"
 }
 
 # Scan staged + unstaged + untracked files for secrets
@@ -77,8 +80,8 @@ scan_secrets() {
     local exceptions
     exceptions=$(load_exceptions)
 
-    # High-severity patterns (block commit) — combined for single grep pass
-    local combined_pattern='(sk-[a-z0-9]{32,}|-----BEGIN .*PRIVATE KEY-----|(password|passwd|secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']|ghp_[a-zA-Z0-9]{36}|xox[baprs]-[a-zA-Z0-9-]+)'
+    # Combined security patterns for single grep pass (high + medium severity)
+    local combined_pattern='(sk-[a-z0-9]{32,}|-----BEGIN .*PRIVATE KEY-----|(password|passwd|secret|token)\s*=\s*["'"'"'][^"'"'"']{8,}["'"'"']|ghp_[a-zA-Z0-9]{36}|xox[baprs]-[a-zA-Z0-9-]+|jdbc:[a-z]+://[^/]+|(api[_-]?key|api[_-]?secret)\s*=\s*["'"'"'][^"'"'"']+["'"'"']|mongodb(\+srv)?://[^/]+|(AKIA|ASIA)[A-Z0-9]{16})'
 
     local found_any=false
 
@@ -99,13 +102,19 @@ scan_secrets() {
             local content="${match_line#*:}"
             local snippet="${content:0:80}"
 
-            # Check exception whitelist
+            # Check exception whitelist (respects file scope)
             local is_exception=false
             if [ -n "$exceptions" ]; then
                 while IFS= read -r exc; do
-                    if [ -n "$exc" ] && echo "$content" | grep -qF "$exc" 2>/dev/null; then
-                        is_exception=true
-                        break
+                    if [ -z "$exc" ]; then continue; fi
+                    local exc_file="${exc%%::*}"
+                    local exc_pattern="${exc#*::}"
+                    # Exception matches if: (no file scope OR file matches) AND pattern matches content
+                    if [ -n "$exc_pattern" ] && echo "$content" | grep -qF "$exc_pattern" 2>/dev/null; then
+                        if [ -z "$exc_file" ] || [ "$exc_file" = "$file" ]; then
+                            is_exception=true
+                            break
+                        fi
                     fi
                 done <<< "$exceptions"
             fi
@@ -223,14 +232,22 @@ fi
 
 # ── Non-fast-forward (try rebase) ──
 if echo "$PUSH_OUTPUT" | grep -qiE "non-fast-forward|\[rejected\]|fetch first"; then
-    git pull --rebase 2>/dev/null || true
+    REBASE_OUTPUT=$(git pull --rebase 2>&1) || true
+    if echo "$REBASE_OUTPUT" | grep -qiE "CONFLICT|conflict|error:|fatal:"; then
+        git rebase --abort 2>/dev/null || true
+        echo -e "${RED}[auto-git-commit] 推送失败：rebase 过程中出现冲突。${NC}"
+        echo "  冲突已回滚，commit 已保存在本地。请手动处理："
+        echo "    git pull --rebase"
+        echo "    git push"
+        exit 0
+    fi
     PUSH_OUTPUT3=$(git push 2>&1) && PUSH_OK3=true || PUSH_OK3=false
     if [ "$PUSH_OK3" = true ]; then
         echo -e "${GREEN}[auto-git-commit] 已提交并推送（rebase 后成功）: $msg${NC}"
         exit 0
     fi
-    echo -e "${RED}[auto-git-commit] 推送失败：远端有冲突，rebase 后仍无法推送。${NC}"
-    echo "  请手动处理冲突后重新推送。commit 已保存在本地。"
+    echo -e "${RED}[auto-git-commit] 推送失败：rebase 后仍无法推送。${NC}"
+    echo "  请手动处理。commit 已保存在本地。"
     exit 0
 fi
 

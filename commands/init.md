@@ -16,6 +16,7 @@ echo ""
 # Check git repository
 if git rev-parse --git-dir &>/dev/null; then
     echo "✓ 当前目录已是 git 仓库"
+    PROJECT_ROOT=$(git rev-parse --show-toplevel)
     IS_NEW_REPO=false
 else
     echo "○ 当前目录不是 git 仓库，将执行 git init"
@@ -143,28 +144,29 @@ If yes, tell the user: "运行 /auto-git-commit:check 进行安全扫描" and ru
 ## Step 7: Write config file
 
 ```bash
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo "$(pwd)")
 REMOTE_URL=""
 if git remote get-url origin &>/dev/null 2>/dev/null; then
     REMOTE_URL=$(git remote get-url origin)
 fi
 
-mkdir -p .claude
+mkdir -p "$PROJECT_ROOT/.claude"
 
-python -c "
-import json, datetime
+REMOTE_URL="$REMOTE_URL" PROJECT_ROOT="$PROJECT_ROOT" python -c "
+import json, os, datetime
 config = {
     'enabled': True,
-    'createdAt': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'createdAt': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'remote': {
         'type': 'github',
-        'url': '$REMOTE_URL'
+        'url': os.environ.get('REMOTE_URL', '')
     },
     'security': {
         'exceptions': []
     }
 }
-with open('.claude/auto-commit.json', 'w') as f:
-    json.dump(config, f, indent=2)
+with open(os.environ['PROJECT_ROOT'] + '/.claude/auto-commit.json', 'w', encoding='utf-8') as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
 "
 echo "✓ .claude/auto-commit.json 已创建"
 ```
