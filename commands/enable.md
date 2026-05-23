@@ -36,7 +36,7 @@ else
     python -c "
 import json
 try:
-    with open('\$HOOK_FILE', 'r') as f:
+    with open('$HOOK_FILE', 'r') as f:
         data = json.load(f)
     if 'hooks' not in data:
         data['hooks'] = {}
@@ -45,7 +45,7 @@ try:
     already = any('auto-commit.sh' in h.get('command', '') for h in data['hooks']['Stop'])
     if not already:
         data['hooks']['Stop'].append({'command': 'bash ~/.claude/hooks/auto-commit.sh'})
-    with open('\$HOOK_FILE', 'w') as f:
+    with open('$HOOK_FILE', 'w') as f:
         json.dump(data, f, indent=2)
 except json.JSONDecodeError:
     print('错误: ~/.claude/settings.json 格式异常，请手动检查。')
@@ -74,4 +74,19 @@ fi
 
 echo ""
 echo "auto-git-commit 已全局启用。之后每次会话结束会自动检测变更、提交、推送。"
+
+echo ""
+echo "============================================"
+echo "  auto-git-commit v2 全局设置完成！"
+echo "============================================"
+echo ""
+echo "  接下来，对每个需要自动提交的项目运行："
+echo "    /auto-git-commit:init"
+echo ""
+echo "  这将初始化项目的 git 仓库、配置远端、进行安全扫描。"
+echo ""
+echo "  其他命令："
+echo "    /auto-git-commit:status   查看状态"
+echo "    /auto-git-commit:check    安全扫描"
+echo "    /auto-git-commit:disable  暂停自动提交"
 ```
