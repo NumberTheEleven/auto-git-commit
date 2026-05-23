@@ -116,17 +116,53 @@ echo "✓ 已加入白名单，以后不再提醒"
 ○ 已跳过。下次扫描还会出现，届时再处理。
 ```
 
-## Step 5: Summary
+## Step 5: Manage exceptions (optional)
+
+If no new findings were found, offer to manage existing whitelist entries:
+
+> "没有发现新的安全问题。当前白名单有 N 条记录。是否需要管理已有白名单？[Y/n]"
+
+If yes, list each exception with its index and ask if the user wants to delete any:
+
+```
+白名单条目：
+[0] config.py:12 — password=test123 (测试用假密码)
+[1] .env.example:5 — api_key=sk-demo-key (示例key)
+
+输入要删除的编号（多个用空格分隔），或按 Enter 跳过：
+```
+
+```bash
+# User provides indices to delete, e.g. "0 2"
+PROJECT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || echo ".")
+INDICES_TO_REMOVE="<user-input-indices>"
+python -c "
+import json
+indices = sorted([int(x) for x in '$INDICES_TO_REMOVE'.split()], reverse=True)
+with open('$PROJECT_ROOT/.claude/auto-commit.json', 'r') as f:
+    data = json.load(f)
+exceptions = data.get('security', {}).get('exceptions', [])
+for i in indices:
+    if 0 <= i < len(exceptions):
+        removed = exceptions.pop(i)
+        print(f'已删除: {removed.get(\"file\", \"?\")} — {removed.get(\"pattern\", \"?\")[:50]}')
+with open('$PROJECT_ROOT/.claude/auto-commit.json', 'w') as f:
+    json.dump(data, f, indent=2)
+"
+```
+
+## Step 6: Summary
 
 ```
 echo ""
 echo "============================================"
 echo "  安全扫描完成"
 echo "============================================"
-echo "  已处理: N 项"
-echo "  已加入白名单: N 项"
-echo "  已跳过: N 项"
-echo ""
+if [ <had-findings> ]; then
+    echo "  已处理: N 项"
+    echo "  已加入白名单: N 项"
+    echo "  已跳过: N 项"
+fi
 echo "  当前白名单条目数: N"
 echo ""
 ```

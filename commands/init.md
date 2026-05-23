@@ -98,6 +98,10 @@ echo "✓ GitHub 仓库已创建并关联"
 
 If `$HAS_COMMITS` is false:
 
+> 注意：生成 commit message 时会将 `package.json`、`README.md` 等项目文件的前 50 行发送给 Claude API。如果这些文件包含 API key、密码或其他敏感信息，请先清理或选择跳过 AI 生成，使用手动提交信息。是否继续生成 AI commit message？[Y/n]
+
+If the user says yes:
+
 ```bash
 git add -A
 

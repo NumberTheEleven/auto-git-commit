@@ -42,11 +42,30 @@ if [ -f "$CONFIG" ]; then
     EXCEPTIONS_COUNT=$(python -c "import json; print(len(json.load(open('$CONFIG')).get('security', {}).get('exceptions', [])))" 2>/dev/null || echo "0")
     CREATED=$(python -c "import json; d=json.load(open('$CONFIG')); print(d.get('createdAt', 'N/A'))" 2>/dev/null || echo "N/A")
 
+    LANG_PREF=$(python -c "import json; d=json.load(open('$CONFIG')); print(d.get('language', 'zh'))" 2>/dev/null || echo "zh")
+    PUSH_TO=$(python -c "import json; d=json.load(open('$CONFIG')); print(d.get('pushTimeout', 60))" 2>/dev/null || echo "60")
+
     echo "项目: ✓ 已接入"
     echo "      接入时间: $CREATED"
     echo "      状态: $([ "$ENABLED" = "True" ] && echo '启用' || echo '已暂停')"
+    echo "      语言: $([ "$LANG_PREF" = "en" ] && echo '英文' || echo '中文')"
+    echo "      推送超时: ${PUSH_TO}s"
     echo "      Remote: $REMOTE"
     echo "      安全白名单: $EXCEPTIONS_COUNT 条"
+
+    # Show exception details
+    if [ "$EXCEPTIONS_COUNT" -gt 0 ]; then
+        echo ""
+        echo "  白名单详情："
+        python -c "
+import json
+with open('$CONFIG') as f:
+    data = json.load(f)
+for i, e in enumerate(data.get('security', {}).get('exceptions', [])):
+    print(f\"    [{i}] {e.get('file', '?')}:{e.get('line', '?')} — {e.get('pattern', '?')[:60]}\")
+    print(f\"        原因: {e.get('reason', 'N/A')}\")
+" 2>/dev/null
+    fi
 else
     echo "项目: ✗ 未接入"
     echo "  运行 /auto-git-commit:init 接入当前项目"

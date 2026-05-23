@@ -37,15 +37,15 @@ if [ ! -f "$CONFIG_FILE" ]; then
     exit 0
 fi
 
-# Check enabled flag
-ENABLED=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('enabled', True))" 2>/dev/null || echo "true")
-if [ "$ENABLED" != "True" ] && [ "$ENABLED" != "true" ]; then
+# Check enabled flag (grep for false: default is enabled)
+if grep -q '"enabled": *false' "$CONFIG_FILE" 2>/dev/null; then
     log INFO "Gate 1: config disabled, exit"
     exit 0
 fi
 
 # Load language preference (default: zh)
-LANG_PREF=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('language', 'zh'))" 2>/dev/null || echo "zh")
+LANG_PREF=$(grep '"language"' "$CONFIG_FILE" 2>/dev/null | sed 's/.*"language": *"\([^"]*\)".*/\1/' || echo "")
+[ -z "$LANG_PREF" ] && LANG_PREF="zh"
 
 # ═══════════════════════════════════════════════
 # Gate 2: Must be a git repo
@@ -225,8 +225,22 @@ $full_diff" 2>/dev/null) || true
 
 msg=$(generate_message)
 
+# Show what will be committed
+STAGED_COUNT=$(git diff --cached --name-only 2>/dev/null | wc -l)
+MODIFIED_COUNT=$(git diff --name-only 2>/dev/null | wc -l)
+UNTRACKED_COUNT=$(git ls-files --others --exclude-standard 2>/dev/null | wc -l)
+TOTAL=$((STAGED_COUNT + MODIFIED_COUNT + UNTRACKED_COUNT))
+log INFO "staging $TOTAL files (staged:$STAGED_COUNT modified:$MODIFIED_COUNT untracked:$UNTRACKED_COUNT)"
+
 git add -A
-COMMIT_OUTPUT=$(git commit -m "$msg" 2>&1) || true
+
+# Detect commit signing preference
+COMMIT_FLAGS="-m"
+if git config --bool commit.gpgsign &>/dev/null; then
+    COMMIT_FLAGS="-S -m"
+fi
+
+COMMIT_OUTPUT=$(git commit $COMMIT_FLAGS "$msg" 2>&1) || true
 if echo "$COMMIT_OUTPUT" | grep -q "nothing to commit"; then
     log INFO "nothing to commit (race), exiting"
     exit 0
@@ -234,7 +248,7 @@ fi
 log INFO "committed: $msg"
 
 # Load push timeout from config (default 60 seconds)
-PUSH_TIMEOUT=$(python -c "import json; d=json.load(open('$CONFIG_FILE')); print(d.get('pushTimeout', 60))" 2>/dev/null || echo "60")
+PUSH_TIMEOUT=$(grep '"pushTimeout"' "$CONFIG_FILE" 2>/dev/null | grep -o '[0-9]\+' || echo "60")
 log INFO "push timeout: ${PUSH_TIMEOUT}s"
 
 # ═══════════════════════════════════════════════
