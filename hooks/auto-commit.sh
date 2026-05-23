@@ -166,10 +166,12 @@ generate_message() {
 $(git diff 2>/dev/null)
 $untracked_content"
 
-    msg=$(claude -p \
+    if command -v claude &>/dev/null; then
+        msg=$(timeout 30 claude -p \
 "Based on the following git diff, generate a single-line conventional commit message in English (e.g. 'feat:', 'fix:', 'refactor:', 'chore:', 'docs:'). Return ONLY the commit message, nothing else. Diff:
 
 $full_diff" 2>/dev/null) || true
+    fi
 
     if [ -z "${msg//[[:space:]]/}" ]; then
         msg="auto: update $(date '+%Y-%m-%d %H:%M')"
@@ -191,7 +193,7 @@ git commit -m "$msg"
 # Push with error differentiation and retry
 # ═══════════════════════════════════════════════
 
-PUSH_OUTPUT=$(git push 2>&1) && PUSH_OK=true || PUSH_OK=false
+PUSH_OUTPUT=$(timeout 60 git push 2>&1) && PUSH_OK=true || PUSH_OK=false
 
 if [ "$PUSH_OK" = true ]; then
     echo -e "${GREEN}[auto-git-commit] 已提交并推送: $msg${NC}"
